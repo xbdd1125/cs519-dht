@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <string.h>
 #include <db.h>
 
@@ -24,6 +25,13 @@ void close_store() {
     dbp->close(dbp, 0);
 }
 
+
+static void print_hex(char *str, int len) {
+    int n;
+    for(n=0; n < len; n++)
+        printf("%02x", (unsigned char) str[n]);
+}
+
 void put_pair(char *key_hash, char *data, size_t data_len) {
     DBT key, value;
 
@@ -35,6 +43,10 @@ void put_pair(char *key_hash, char *data, size_t data_len) {
 
     value.data = data;
     value.size = data_len;
+    
+    printf("Storing hash: ");
+    print_hex(key_hash, KEY_LENGTH);
+    printf("\n");
 
     dbp->put(dbp, NULL, &key, &value, 0);
 }
@@ -47,6 +59,10 @@ void get_value(char *key_hash, char **data, size_t *data_len) {
 
     key.data = key_hash;
     key.size = KEY_LENGTH;
+
+    printf("Retrieving hash: ");
+    print_hex(key_hash, KEY_LENGTH);
+    printf("\n");
 
     dbp->get(dbp, NULL, &key, &value, 0);
 
