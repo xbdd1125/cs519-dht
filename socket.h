@@ -6,6 +6,7 @@
 int open_listening(char *);
 int accept_connection(int);
 int open_connecting(char *, char *);
+void close_connection(int);
 void handle_connections(int, void (*handle_cmd)(int, int));
 void send_string(int, char *, unsigned int);
 void recv_string(int, char *, unsigned int *);

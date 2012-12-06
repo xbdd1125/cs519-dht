@@ -3,6 +3,7 @@
 #include <netdb.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "socket.h"
 
@@ -62,6 +63,11 @@ int open_connecting(char *address, char *port) {
     freeaddrinfo(res);
 
     return sockfd;
+}
+
+
+void close_connection(int sockfd) {
+    close(sockfd);
 }
 
 

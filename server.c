@@ -8,40 +8,80 @@
 #include "socket.h"
 
 static struct config *cfg;
-static char buf[8192];
+
+static char key_buf[8192];
+static char val_buf[8192];
 
 static void handle_primary(int cmd, int sockfd) {
     unsigned int key_len, value_len;
+    int my_index = cfg->self_entry,
+        key_index;
     char *value;
     char key_hash[20];
+
+    int otherfd;
 
     switch (cmd) {
         case PUT:   /* Store (key, value) pair */
 
             /* First string is key */
-            recv_string(sockfd, buf, &key_len);
-            get_key(buf, key_len, key_hash);
+            recv_string(sockfd, key_buf, &key_len);
+            get_key(key_buf, key_len, key_hash);
 
             /* Second string is value */
-            recv_string(sockfd, buf, &value_len);
+            recv_string(sockfd, val_buf, &value_len);
 
-            /* Put them in the store */
-            put_pair(key_hash, buf, value_len);
+            key_index = who_has_key(key_hash, cfg->num_servers);
 
+            if (my_index == key_index * 2) {
+                /* Put them in the store */
+                put_pair(key_hash, val_buf, value_len);
+
+                /* Replicate to secondary... */
+            }
+
+            else {
+                /* Send them to someone else */
+                otherfd = open_connecting(cfg->servers[key_index * 2].address,
+                                          cfg->servers[key_index * 2].port);
+                send_cmd(otherfd, PUT);
+                send_string(otherfd, key_buf, key_len);
+                send_string(otherfd, val_buf, value_len);
+                close_connection(otherfd);
+            }
+
+            /* Send confirmation to client */
             break;
+
 
         case GET:   /* Read value (from key)   */
 
             /* First string is key */
-            recv_string(sockfd, buf, &key_len);
-            get_key(buf, key_len, key_hash);
+            recv_string(sockfd, key_buf, &key_len);
+            get_key(key_buf, key_len, key_hash);
 
-            /* Get matching value and send it back */
-            get_value(key_hash, &value, &value_len);
+            key_index = who_has_key(key_hash, cfg->num_servers);
+
+            if (my_index == key_index * 2) {
+                /* Get matching value and send it back */
+                get_value(key_hash, &value, &value_len);
+            }
+            else {
+                /* Get it from someone else */
+                otherfd = open_connecting(cfg->servers[key_index * 2].address,
+                                          cfg->servers[key_index * 2].port);
+                send_cmd(otherfd , GET);
+                send_string(otherfd, key_buf, key_len);
+                recv_string(otherfd, val_buf, &value_len);
+                value = val_buf;
+
+                close_connection(otherfd);
+            }
+
             send_string(sockfd, value, value_len);
             break;
     
-        /* We don't respond to other messages */
+        /* We (primaries) don't respond to other messages */
         default:
             break;
     }
