@@ -26,6 +26,7 @@ int main(int argc, char **argv) {
         send_cmd(connect_port, PUT);
         send_string(connect_port, (char *) &i, sizeof(int));
         send_string(connect_port, value_string, strlen(value_string));
+        recv_ok(connect_port);
     }
     
     i = 5;
