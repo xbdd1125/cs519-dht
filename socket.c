@@ -116,6 +116,13 @@ void send_cmd(int sockfd, int cmd) {
     send(sockfd, &cmd, 4, 0);
 }
 
+void recv_ok(int sockfd) {
+    unsigned int burn;
+    recv(sockfd, &burn, 4, 0);
+
+    if (burn != OK)
+        fprintf(stderr, "Problem with OK\n");
+}
 
 void handle_connections(int listen_socket, void (*handle_cmd)(int, int)) {
 

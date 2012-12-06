@@ -12,6 +12,7 @@ static struct config *cfg;
 static char key_buf[8192];
 static char val_buf[8192];
 
+
 static void handle_primary(int cmd, int sockfd) {
     unsigned int key_len, value_len;
     int my_index = cfg->self_entry,
@@ -38,6 +39,15 @@ static void handle_primary(int cmd, int sockfd) {
                 put_pair(key_hash, val_buf, value_len);
 
                 /* Replicate to secondary... */
+                otherfd = open_connecting(cfg->servers[my_index + 1].address,
+                                          cfg->servers[my_index + 1].port);
+
+                send_cmd(otherfd, PUT);
+                send_string(otherfd, key_buf, key_len);
+                send_string(otherfd, val_buf, value_len);
+                recv_ok(otherfd);
+
+                close_connection(otherfd);
             }
 
             else {
@@ -47,8 +57,12 @@ static void handle_primary(int cmd, int sockfd) {
                 send_cmd(otherfd, PUT);
                 send_string(otherfd, key_buf, key_len);
                 send_string(otherfd, val_buf, value_len);
+                recv_ok(otherfd);
+
                 close_connection(otherfd);
             }
+
+            send_cmd(sockfd, OK);
 
             /* Send confirmation to client */
             break;
@@ -86,6 +100,45 @@ static void handle_primary(int cmd, int sockfd) {
             break;
     }
 }
+
+
+static void handle_secondary(int cmd, int sockfd) {
+    unsigned int key_len, value_len;
+    char *value;
+    char key_hash[20];
+
+    switch (cmd) {
+        case PUT:   /* Store (key, value) pair */
+
+            /* First string is key */
+            recv_string(sockfd, key_buf, &key_len);
+            get_key(key_buf, key_len, key_hash);
+
+            /* Second string is value */
+            recv_string(sockfd, val_buf, &value_len);
+            put_pair(key_hash, val_buf, value_len);
+
+            /* Send confirmation to client */
+            send_cmd(sockfd, OK);
+            break;
+
+
+        case GET:   /* Read value (from key)   */
+
+            /* First string is key */
+            recv_string(sockfd, key_buf, &key_len);
+            get_key(key_buf, key_len, key_hash);
+
+            get_value(key_hash, &value, &value_len);
+            send_string(sockfd, value, value_len);
+            break;
+    
+        /* We (secondaries) should respond to active/standby messages... */
+        default:
+            break;
+    }
+}
+
 
 int main(int argc, char **argv) {
 
@@ -125,8 +178,10 @@ int main(int argc, char **argv) {
     
     listen_port = open_listening(cfg->servers[cfg->self_entry].port);
 
-    /* This loops */
-    handle_connections(listen_port, &handle_primary);
+    if ((cfg->self_entry % 2) == 0)
+        handle_connections(listen_port, &handle_primary);
+    else
+        handle_connections(listen_port, &handle_secondary);
    
     free_config(cfg);
     close_store();
