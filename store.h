@@ -6,5 +6,6 @@
 int init_store();
 void put_pair(char *, char *, size_t);
 void get_value(char *, char **, size_t *);
+void close_store();
 
 #endif

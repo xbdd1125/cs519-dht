@@ -7,8 +7,6 @@
 static DB *dbp;
 
 int init_store() {
-    int status;
-    
     if (0 != db_create(&dbp, NULL, 0)) {
         printf("db create failed\n");
         return -1;
@@ -18,6 +16,8 @@ int init_store() {
         printf("db open failed\n");
         return -1;
     }
+
+    return 0;
 }
 
 void close_store() {

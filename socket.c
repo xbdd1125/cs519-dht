@@ -18,7 +18,7 @@ int open_listening(char *port) {
 
 
     if ((status = getaddrinfo(NULL, port, &hints, &res)) != 0) {
-        printf("getaddrinfo error: %s\n", gai_strerror(status));
+        fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
         return -1;
     }
     
@@ -30,6 +30,7 @@ int open_listening(char *port) {
 
     return sockfd;
 }
+
 
 int accept_connection(int listen_socket) {
     struct sockaddr_storage incoming_addr;
@@ -51,7 +52,7 @@ int open_connecting(char *address, char *port) {
     hints.ai_socktype = SOCK_STREAM;
 
     if ((status = getaddrinfo(address, port, &hints, &res)) != 0) {
-        printf("getaddrinfo error: %s\n", gai_strerror(status));
+        fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
         return -1;
     }
     
@@ -64,7 +65,7 @@ int open_connecting(char *address, char *port) {
 }
 
 
-int send_all(int sockfd, char *buffer, size_t len)
+static int send_all(int sockfd, char *buffer, size_t len)
 {
     int sent = 0;
     int left = len;
@@ -80,7 +81,7 @@ int send_all(int sockfd, char *buffer, size_t len)
 } 
 
 
-int recv_all(int sockfd, char *buffer, size_t len) {
+static int recv_all(int sockfd, char *buffer, size_t len) {
     int recvd = 0;
     int left  = len;
     int status = 0;
@@ -92,4 +93,74 @@ int recv_all(int sockfd, char *buffer, size_t len) {
         left  = left  - status;
     }
     return status;
+}
+
+
+void recv_string(int sockfd, char *buf, unsigned int *len) {
+    recv(sockfd, len, 4, 0);
+    recv_all(sockfd, buf, *len);
+}
+
+void send_string(int sockfd, char *buf, unsigned int len) {
+    send(sockfd, &len, 4, 0);
+    send_all(sockfd, buf, len);
+}
+
+void send_cmd(int sockfd, int cmd) {
+    send(sockfd, &cmd, 4, 0);
+}
+
+
+void handle_connections(int listen_socket, void (*handle_cmd)(int, int)) {
+
+    fd_set readfds, master;
+    int maxfd;
+
+    FD_ZERO(&master);
+    FD_SET(listen_socket, &master);
+    maxfd = listen_socket;
+
+    while(1) {
+        int i, newfd, status;
+        unsigned int cmd;
+
+
+        readfds = master;
+
+        if (-1 == select(maxfd + 1, &readfds, NULL, NULL, NULL)) {
+            perror("select failed");
+            exit(1);
+        }
+
+        for (i = 0; i <= maxfd; i++) {
+            if (FD_ISSET(i, &readfds)) {
+
+                /* New connection */
+                if (i == listen_socket) {
+                    newfd = accept_connection(listen_socket);
+
+                    if (-1 == newfd) 
+                        perror("new connection accept failed");
+                    else {
+                        FD_SET(newfd, &master);
+                        maxfd = (newfd > maxfd) ? newfd : maxfd;
+                    }
+                }
+                
+                /* New data from existing connection */
+                else {
+
+                    status = recv(i, &cmd, 4, 0);
+
+                    if (status <= 0) {
+                        close(i);
+                        FD_CLR(i, &master);
+                        continue;
+                    }
+
+                    (*handle_cmd)(cmd, i);
+                }
+            }
+        }
+    }
 }

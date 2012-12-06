@@ -5,7 +5,7 @@
 
 int main(int argc, char **argv) {
 
-    char packet_buf[8192];
+    char buf[8192];
     unsigned int len;
     char *data;
     int connect_port;
@@ -16,26 +16,16 @@ int main(int argc, char **argv) {
     }
 
     connect_port = open_connecting(argv[1], argv[2]);
-
-    *((unsigned int *) packet_buf)     = 0x00;  /* Store */
-    *((unsigned int *) &packet_buf[4]) = 4;
-    memcpy(&packet_buf[8], "1234", 4);
-    *((unsigned int *) &packet_buf[12]) = 12;
-    memcpy(&packet_buf[16], "abcdefghijk\0", 12);
-
-    send_all(connect_port, packet_buf, 4 + 4 + 4 + 4 + 12);
-
-    *((unsigned int *) packet_buf)     = 0x01;  /* Get */
-    *((unsigned int *) &packet_buf[4]) = 4;
-    memcpy(&packet_buf[8], "1234", 4);
-
-    send_all(connect_port, packet_buf, 4 + 4 + 4);
     
-    recv(connect_port, &len, 4, 0);
+    send_cmd(connect_port, PUT);
+    send_string(connect_port, "1234", 4);
+    send_string(connect_port, "abcdefghijk\0", 12);
 
-    recv_all(connect_port, packet_buf, len);
+    send_cmd(connect_port, GET);
+    send_string(connect_port, "1234", 4);
+    recv_string(connect_port, buf, &len);
 
-    printf("Got: %s\n", packet_buf);
+    printf("Got: %s\n", buf);
 
     return 0;
 }
