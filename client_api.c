@@ -27,3 +27,7 @@ void dht_disconnect(int fd) {
     close_connection(fd);
 }
 
+void dht_kill(int fd) {
+    send_cmd(fd, KILL);
+}
+

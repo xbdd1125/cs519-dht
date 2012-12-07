@@ -8,19 +8,19 @@
 #include "socket.h"
 
 static struct config *cfg;
-
 static char key_buf[8192];
 static char val_buf[8192];
 
 
-static void handle_primary(int cmd, int sockfd) {
+static int handle_primary(int cmd, int sockfd) {
+    int i;
     unsigned int key_len, value_len;
     int my_index = cfg->self_entry,
         key_index;
+    int secondary_fd = 0,
+        other_fd     = 0;
     char *value;
     char key_hash[20];
-
-    int otherfd;
 
     switch (cmd) {
         case PUT:   /* Store (key, value) pair */
@@ -39,27 +39,29 @@ static void handle_primary(int cmd, int sockfd) {
                 put_pair(key_hash, val_buf, value_len);
 
                 /* Replicate to secondary... */
-                otherfd = open_connecting(cfg->servers[my_index + 1].address,
-                                          cfg->servers[my_index + 1].port);
+                if (!secondary_fd)
+                    secondary_fd = open_connecting(cfg->servers[my_index + 1].address,
+                                                   cfg->servers[my_index + 1].port);
 
-                send_cmd(otherfd, PUT);
-                send_string(otherfd, key_buf, key_len);
-                send_string(otherfd, val_buf, value_len);
-                recv_ok(otherfd);
-
-                close_connection(otherfd);
+                send_cmd(secondary_fd, PUT);
+                send_string(secondary_fd, key_buf, key_len);
+                send_string(secondary_fd, val_buf, value_len);
+                recv_ok(secondary_fd);
             }
 
             else {
                 /* Send them to someone else */
-                otherfd = open_connecting(cfg->servers[key_index * 2].address,
-                                          cfg->servers[key_index * 2].port);
-                send_cmd(otherfd, PUT);
-                send_string(otherfd, key_buf, key_len);
-                send_string(otherfd, val_buf, value_len);
-                recv_ok(otherfd);
+                if (! cfg->servers[key_index * 2].socket_fd)
+                    cfg->servers[key_index * 2].socket_fd =
+                        open_connecting(cfg->servers[key_index * 2].address,
+                                        cfg->servers[key_index * 2].port);
 
-                close_connection(otherfd);
+                other_fd = cfg->servers[key_index * 2].socket_fd;
+
+                send_cmd(other_fd, PUT);
+                send_string(other_fd, key_buf, key_len);
+                send_string(other_fd, val_buf, value_len);
+                recv_ok(other_fd);
             }
 
             send_cmd(sockfd, OK);
@@ -82,27 +84,67 @@ static void handle_primary(int cmd, int sockfd) {
             }
             else {
                 /* Get it from someone else */
-                otherfd = open_connecting(cfg->servers[key_index * 2].address,
-                                          cfg->servers[key_index * 2].port);
-                send_cmd(otherfd , GET);
-                send_string(otherfd, key_buf, key_len);
-                recv_string(otherfd, val_buf, &value_len);
-                value = val_buf;
+                if (! cfg->servers[key_index * 2].socket_fd)
+                    cfg->servers[key_index * 2].socket_fd =
+                        open_connecting(cfg->servers[key_index * 2].address,
+                                        cfg->servers[key_index * 2].port);
 
-                close_connection(otherfd);
+                other_fd = cfg->servers[key_index * 2].socket_fd;
+                send_cmd(other_fd , GET);
+                send_string(other_fd, key_buf, key_len);
+                recv_string(other_fd, val_buf, &value_len);
+                value = val_buf;
             }
 
             send_string(sockfd, value, value_len);
             break;
+
+        case DIE:
+            
+            if (!secondary_fd)
+                secondary_fd = open_connecting(cfg->servers[my_index + 1].address,
+                                               cfg->servers[my_index + 1].port);
+
+            send_cmd(secondary_fd, DIE);
+            close_connection(secondary_fd);
+            return -1;
+
+        case KILL:
+
+            if (!secondary_fd)
+                secondary_fd = open_connecting(cfg->servers[my_index + 1].address,
+                                               cfg->servers[my_index + 1].port);
+
+            send_cmd(secondary_fd, DIE);
+            close_connection(secondary_fd);
+
+            /* KILL everyone else... */
+            for (i = 0; i < (cfg->num_servers / 2); i++) {
+                if ((i * 2) != cfg->self_entry) {
+                    if (! cfg->servers[i * 2].socket_fd)
+                        cfg->servers[i * 2].socket_fd = 
+                            open_connecting(cfg->servers[key_index * 2].address,
+                                            cfg->servers[key_index * 2].port);
+
+                    other_fd = cfg->servers[i * 2].socket_fd;
+
+                    send_cmd(other_fd, DIE);
+                    close_connection(secondary_fd);
+                }
+            }
+
+            return -1;
     
         /* We (primaries) don't respond to other messages */
         default:
             break;
     }
+
+    return 0;
 }
 
 
-static void handle_secondary(int cmd, int sockfd) {
+static int handle_secondary(int cmd, int sockfd) {
     unsigned int key_len, value_len;
     char *value;
     char key_hash[20];
@@ -132,11 +174,16 @@ static void handle_secondary(int cmd, int sockfd) {
             get_value(key_hash, &value, &value_len);
             send_string(sockfd, value, value_len);
             break;
+
+        case DIE:
+            return -1;
     
         /* We (secondaries) should respond to active/standby messages... */
         default:
             break;
     }
+
+    return 0;
 }
 
 
@@ -169,7 +216,7 @@ int main(int argc, char **argv) {
     printf("Local address: %s:%s (%s)\n\n", 
             cfg->servers[cfg->self_entry].address,
             cfg->servers[cfg->self_entry].port,
-            cfg->servers[cfg->self_entry].is_primary ? "primary" : "secondary");
+            (cfg->self_entry % 2) == 0 ? "primary" : "secondary");
 
     if (0 != init_store()) {
         fprintf(stderr, "Failed to initialize store\n");
@@ -177,7 +224,8 @@ int main(int argc, char **argv) {
     }
     
     listen_port = open_listening(cfg->servers[cfg->self_entry].port);
-
+    
+    /* Primary servers have even entry indicies */
     if ((cfg->self_entry % 2) == 0)
         handle_connections(listen_port, &handle_primary);
     else

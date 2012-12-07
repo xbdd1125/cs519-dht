@@ -67,10 +67,7 @@ int get_config(char *file, struct config **complete_config) {
         /* Port number entry */
         tokptr = strtok(NULL, ":");
         server_config->servers[line_number - 2].port = copy_token(tokptr);
-        
-        /* Primary/Secondary indicator entry */
-        tokptr = strtok(NULL, ":");
-        server_config->servers[line_number - 2].is_primary = tokptr[0] == 'p' ? 1 : 0;
+        server_config->servers[line_number - 2].socket_fd = 0;
     }
 
     *complete_config = server_config;

@@ -10,7 +10,7 @@ struct config {
 struct server_info {
     char *address;
     char *port;
-    int is_primary;
+    int socket_fd;
 };
 
 int get_config(char *, struct config **);

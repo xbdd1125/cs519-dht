@@ -4,6 +4,7 @@
 int dht_connect(char *, char *);
 int dht_write(int, char *, char *);
 int dht_read(int, char *, char *);
-void dht_disconnect(void);
+void dht_disconnect(int);
+void dht_kill(int);
 
 #endif

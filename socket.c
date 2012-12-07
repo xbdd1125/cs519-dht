@@ -124,7 +124,7 @@ void recv_ok(int sockfd) {
         fprintf(stderr, "Problem with OK\n");
 }
 
-void handle_connections(int listen_socket, void (*handle_cmd)(int, int)) {
+void handle_connections(int listen_socket, int (*handle_cmd)(int, int)) {
 
     fd_set readfds, master;
     int maxfd;
@@ -171,7 +171,8 @@ void handle_connections(int listen_socket, void (*handle_cmd)(int, int)) {
                         continue;
                     }
 
-                    (*handle_cmd)(cmd, i);
+                    if (0 != (*handle_cmd)(cmd, i))
+                        return;
                 }
             }
         }
