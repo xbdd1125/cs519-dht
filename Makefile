@@ -29,4 +29,4 @@ test: server client
 	@./client kill  localhost 4446
 
 clean:
-	@-rm *.o server client
+	@-rm *.o server client > /dev/null 2>&1
