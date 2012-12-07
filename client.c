@@ -78,6 +78,7 @@ int main(int argc, char **argv) {
             fd = dht_connect(argv[2], argv[3]);
             dht_write(fd, argv[4], argv[5]);
             dht_disconnect(fd);
+            break;
 
         case ('k'):
             if (argc < 4) {
@@ -89,10 +90,10 @@ int main(int argc, char **argv) {
             dht_kill(fd);
             printf("\nKilled DHT\n");
             dht_disconnect(fd);
-
             break;
 
         default:
+            printf("Unknown command\n");
             break;
     }
 
